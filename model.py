@@ -19,29 +19,85 @@ labels = batch1[b'labels']
 def sigmoid(x):
     return 1 / (1 + np.exp(-x))
 
+def inv_sigmoid(x):
+    return np.log(x / (1 - x))
+
+def cost_function(pred_y, real_y):
+    return np.mean(np.sum(np.square(real_y - pred_y)))
+        
+
 class Model:
-    def __init__(self, INPUT_SIZE, HIDDEN_SIZE1, HIDDEN_SIZE2, HIDDEN_SIZE3, OUTPUT_SIZE):
+    def __init__(self, LAYER_SIZES=np.array([]), LR=0.001):
+        self.NUM_LAYERS = LAYER_SIZES.size - 1
+        self.LR = LR
+        
         # Biases
-        self.b1 = np.zeros(HIDDEN_SIZE1)
-        self.b2 = np.zeros(HIDDEN_SIZE2)
-        self.b3 = np.zeros(HIDDEN_SIZE2)
+        self.biases=[]
+        for size in LAYER_SIZES:
+            if (size == LAYER_SIZES[0]):
+                continue
+            self.biases.append(np.zeros(size))
 
         # Weights
-        self.w1 = np.zeros((INPUT_SIZE, HIDDEN_SIZE1))
-        self.w2 = np.zeros((HIDDEN_SIZE1, HIDDEN_SIZE2))
-        self.w3 = np.zeros((HIDDEN_SIZE2, HIDDEN_SIZE3))
-        self.w4 = np.zeros((HIDDEN_SIZE3, OUTPUT_SIZE))
+        self.weights=[]
+        for i in range(LAYER_SIZES.size):
+            if (LAYER_SIZES[i] == LAYER_SIZES[-1]):
+                break
+            self.weights.append(np.zeros((LAYER_SIZES[i], LAYER_SIZES[i+1])))
 
-    def forward(self, input_arr):
-        h1_arr = sigmoid(input_arr @ self.w1 + self.b1)
-        h2_arr = sigmoid(h1_arr @ self.w2 + self.b2)
-        h3_arr = sigmoid(h2_arr @ self.w3 + self.b3)
-        output_arr = sigmoid(h3_arr @ self.w4)
-        return output_arr
+
+    def forward(self, input_arr, layer_idx=None):
+        if layer_idx is None:
+            layer_idx = self.NUM_LAYERS
+        
+        if layer_idx == 0:
+            return input_arr
+        return sigmoid(self.weights[layer_idx - 1] @ self.forward(input_arr, layer_idx - 1) + self.biases[layer_idx - 1])
+
+    
+    def backprop_helper(self, dc_da, input_arr, layer_idx=None):
+        if layer_idx is None:
+            layer_idx = self.NUM_LAYERS
+        
+        if (layer_idx == 0):
+            return
+        
+        dc_da_1 = np.sum(self.weights[layer_idx] @ 
+                       (self.forward(input_arr, layer_idx) @ (1 - self.forward(input_arr, layer_idx))) @ 
+                       dc_da)
+
+        self.backprop_helper(dc_da_1, input_arr, layer_idx - 1)
+
+        dc_dw = (self.forward(input_arr, layer_idx - 1) @ 
+                 (self.forward(input_arr, layer_idx) @ (1 - self.forward(input_arr, layer_idx))) @ 
+                 dc_da)
+        
+        dc_db = ((self.forward(input_arr, layer_idx) @ (1 - self.forward(input_arr, layer_idx))) @ 
+                 dc_da)
+        
+        self.weights[layer_idx] += dc_dw * self.LR
+        self.biases[layer_idx] += dc_db * self.LR
+
+        return
+    
+    def backprop(self, input_arr, target_arr):
+        output_arr = self.forward(input_arr)
+        dc_da = np.mean(np.sum(2*(output_arr - target_arr), axis=0))
+        
+        self.backprop_helper(dc_da, input_arr)
+
+
     
 #---------------------Running Model----------------------
 
-print(labels[0])
-model = Model(images[0].size, 16, 16, 16, 10)
+model = Model(np.array([images[0].size, 16, 16, 16, 10]))
 
+print(labels[0])
 print(model.forward(images[0]))
+
+labels_onehot = (labels[:, np.newaxis] == np.arrange(1,11)).astype(int)
+model.backprop(images, labels_onehot)
+
+print(labels[0])
+print(model.forward(images[0]))
+

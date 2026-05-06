@@ -52,7 +52,7 @@ class Model:
         
         if layer_idx == 0:
             return input_arr
-        return sigmoid(self.weights[layer_idx - 1] @ self.forward(input_arr, layer_idx - 1) + self.biases[layer_idx - 1])
+        return sigmoid(self.forward(input_arr, layer_idx - 1) @ self.weights[layer_idx - 1] + self.biases[layer_idx - 1])
 
     
     def backprop_helper(self, dc_da, input_arr, layer_idx=None):
@@ -62,7 +62,9 @@ class Model:
         if (layer_idx == 0):
             return
         
-        dc_da_1 = np.sum(self.weights[layer_idx] @ 
+        #figure out correct matrix multiplication for all below
+
+        dc_da_1 = np.sum(self.weights[layer_idx - 1] @ 
                        (self.forward(input_arr, layer_idx) @ (1 - self.forward(input_arr, layer_idx))) @ 
                        dc_da)
 
@@ -75,8 +77,8 @@ class Model:
         dc_db = ((self.forward(input_arr, layer_idx) @ (1 - self.forward(input_arr, layer_idx))) @ 
                  dc_da)
         
-        self.weights[layer_idx] += dc_dw * self.LR
-        self.biases[layer_idx] += dc_db * self.LR
+        self.weights[layer_idx - 1] += dc_dw * self.LR
+        self.biases[layer_idx - 1] += dc_db * self.LR
 
         return
     
@@ -95,7 +97,7 @@ model = Model(np.array([images[0].size, 16, 16, 16, 10]))
 print(labels[0])
 print(model.forward(images[0]))
 
-labels_onehot = (labels[:, np.newaxis] == np.arrange(1,11)).astype(int)
+labels_onehot = np.eye(10)[labels]
 model.backprop(images, labels_onehot)
 
 print(labels[0])

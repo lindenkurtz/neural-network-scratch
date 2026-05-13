@@ -64,18 +64,13 @@ class Model:
         
         #figure out correct matrix multiplication for all below
 
-        dc_da_1 = np.sum(self.weights[layer_idx - 1] @ 
-                       (self.forward(input_arr, layer_idx) @ (1 - self.forward(input_arr, layer_idx))) @ 
-                       dc_da)
+        dc_da_1 = (dc_da * self.forward(input_arr, layer_idx) * (1 - self.forward(input_arr, layer_idx))) @ self.weights[layer_idx - 1].T
 
         self.backprop_helper(dc_da_1, input_arr, layer_idx - 1)
 
-        dc_dw = (self.forward(input_arr, layer_idx - 1) @ 
-                 (self.forward(input_arr, layer_idx) @ (1 - self.forward(input_arr, layer_idx))) @ 
-                 dc_da)
+        dc_dw = self.forward(input_arr, layer_idx - 1).T @ (self.forward(input_arr, layer_idx) * 1 - self.forward(input_arr, layer_idx) * dc_da)
         
-        dc_db = ((self.forward(input_arr, layer_idx) @ (1 - self.forward(input_arr, layer_idx))) @ 
-                 dc_da)
+        dc_db = self.forward(input_arr, layer_idx) * 1 - self.forward(input_arr, layer_idx) * dc_da
         
         self.weights[layer_idx - 1] += dc_dw * self.LR
         self.biases[layer_idx - 1] += dc_db * self.LR

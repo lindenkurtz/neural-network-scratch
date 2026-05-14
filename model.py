@@ -1,7 +1,11 @@
 import numpy as np
 import pickle
 import warnings
+from tqdm import tqdm
 warnings.filterwarnings("ignore", category=np.exceptions.VisibleDeprecationWarning)
+
+#generator
+rng = np.random.default_rng(seed=5)
 
 #---------------------Data Wrangling----------------------
 
@@ -17,17 +21,22 @@ labels = batch1[b'labels']
 #---------------------Model Definition----------------------
 
 def sigmoid(x):
-    return 1 / (1 + np.exp(-x))
+    z = np.exp(-np.abs(x))
+    return np.where(x >= 0, 1 / (1 + z), z / (1 + z))
 
 def inv_sigmoid(x):
     return np.log(x / (1 - x))
 
+def softmax(x):
+    z = np.exp(x - np.max(x))
+    return z / z.sum()
+
 def cost_function(pred_y, real_y):
-    return np.mean(np.sum(np.square(real_y - pred_y)))
+    return - np.sum(real_y * np.log(pred_y))
         
 
 class Model:
-    def __init__(self, LAYER_SIZES=np.array([]), LR=0.001):
+    def __init__(self, LAYER_SIZES=np.array([]), LR=0.0001):
         self.NUM_LAYERS = LAYER_SIZES.size - 1
         self.LR = LR
         
@@ -36,14 +45,14 @@ class Model:
         for size in LAYER_SIZES:
             if (size == LAYER_SIZES[0]):
                 continue
-            self.biases.append(np.zeros(size))
+            self.biases.append(rng.standard_normal(size) * np.sqrt(2.0 / size))
 
         # Weights
         self.weights=[]
         for i in range(LAYER_SIZES.size):
             if (LAYER_SIZES[i] == LAYER_SIZES[-1]):
                 break
-            self.weights.append(np.zeros((LAYER_SIZES[i], LAYER_SIZES[i+1])))
+            self.weights.append(rng.standard_normal((LAYER_SIZES[i], LAYER_SIZES[i+1])) * np.sqrt(1.0 / LAYER_SIZES[i])) # use std norm so weights can be negative, and uses Xavier to make smaller
 
 
     def forward(self, input_arr, layer_idx=None):
@@ -52,6 +61,8 @@ class Model:
         
         if layer_idx == 0:
             return input_arr
+        if layer_idx == self.NUM_LAYERS:
+            return softmax(self.forward(input_arr, layer_idx - 1) @ self.weights[layer_idx - 1] + self.biases[layer_idx - 1])
         return sigmoid(self.forward(input_arr, layer_idx - 1) @ self.weights[layer_idx - 1] + self.biases[layer_idx - 1])
 
     
@@ -62,26 +73,28 @@ class Model:
         if (layer_idx == 0):
             return
         
-        #figure out correct matrix multiplication for all below
-
         dc_da_1 = (dc_da * self.forward(input_arr, layer_idx) * (1 - self.forward(input_arr, layer_idx))) @ self.weights[layer_idx - 1].T
 
         self.backprop_helper(dc_da_1, input_arr, layer_idx - 1)
-
-        dc_dw = self.forward(input_arr, layer_idx - 1).T @ (self.forward(input_arr, layer_idx) * 1 - self.forward(input_arr, layer_idx) * dc_da)
+        if (layer_idx == self.NUM_LAYERS):
+            dc_dw = self.forward(input_arr, layer_idx - 1).T @ dc_da
+            dc_db = np.mean(dc_da, axis=0)
+        else:
+            dc_dw = self.forward(input_arr, layer_idx - 1).T @ (self.forward(input_arr, layer_idx) * (1 - self.forward(input_arr, layer_idx)) * dc_da) 
+            dc_db = np.mean(self.forward(input_arr, layer_idx) * (1 - self.forward(input_arr, layer_idx)) * dc_da, axis=0)
         
-        dc_db = self.forward(input_arr, layer_idx) * 1 - self.forward(input_arr, layer_idx) * dc_da
+        dc_dw = np.clip(dc_dw, -1, 1) # gradient clipping
         
-        self.weights[layer_idx - 1] += dc_dw * self.LR
-        self.biases[layer_idx - 1] += dc_db * self.LR
+        self.weights[layer_idx - 1] -= dc_dw * self.LR # -= instead of +=
+        self.biases[layer_idx - 1] -= dc_db * self.LR
 
         return
     
     def backprop(self, input_arr, target_arr):
         output_arr = self.forward(input_arr)
-        dc_da = np.mean(np.sum(2*(output_arr - target_arr), axis=0))
+        dc_dz = output_arr - target_arr
         
-        self.backprop_helper(dc_da, input_arr)
+        self.backprop_helper(dc_dz, input_arr)
 
 
     
@@ -93,8 +106,18 @@ print(labels[0])
 print(model.forward(images[0]))
 
 labels_onehot = np.eye(10)[labels]
-model.backprop(images, labels_onehot)
 
-print(labels[0])
+for epoch in tqdm(range(25)):
+    #shuffle order of inputs and outputs
+    p = np.random.permutation(len(images))
+    images = images[p]
+    labels_onehot = labels_onehot[p]
+    if epoch % 5 == 0:
+        print(cost_function(model.forward(images), labels_onehot))
+
+    model.backprop(images, labels_onehot)
+
+print(np.max(model.weights[0].flatten()))
+print(labels_onehot[0])
 print(model.forward(images[0]))
-
+print(cost_function(model.forward(images), labels_onehot))
